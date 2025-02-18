@@ -50,6 +50,7 @@ security:
         # - { path: ^/profile, roles: ROLE_USER }\
          - { path: ^/api/common, roles: [ROLE_USER, ROLE_ADMIN, ROLE_MANAGER] }
          - { path: ^/api/login, roles: PUBLIC_ACCESS }
+         - { path: ^/api/login, roles: IS_AUTHENTICATED_ANONYMOUSLY }
          - { path: ^/api/admin, roles: ROLE_ADMIN }
          - { path: ^/api/user, roles: ROLE_USER }
          - { path: ^/api/manager, roles: ROLE_MANAGER }
