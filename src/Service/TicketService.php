@@ -4,6 +4,7 @@ namespace App\Service;
 use Doctrine\ORM\EntityManagerInterface;
 use App\Entity\Ticket;
 use App\Repository\TicketRepository;
+use App\Repository\UserRepository;
 use Symfony\Component\Validator\Validator\ValidatorInterface;
 use Symfony\Component\Validator\Constraints as Assert;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,12 +17,14 @@ class TicketService
 {
     private EntityManagerInterface $entityManager;
     private TicketRepository $ticketRepository;
+    private UserRepository $userRepository;
     private ValidatorInterface $validator;
-    public function __construct(EntityManagerInterface $entityManager,TicketRepository $ticketRepository,ValidatorInterface $validator)
+    public function __construct(EntityManagerInterface $entityManager,TicketRepository $ticketRepository,ValidatorInterface $validator,UserRepository $userRepository)
     {
         $this->entityManager = $entityManager;
         $this->ticketRepository = $ticketRepository;
         $this->validator = $validator;
+        $this->userRepository = $userRepository;
     }
 
     /** function to create ticket */
@@ -165,6 +168,113 @@ class TicketService
                 'message'=>'success',
                 'error'=>''
             ];
+        }
+        return $responseData;
+    }
+
+    /** function to assign ticket to user */
+    public function assignTicket($data,$user)
+    {
+        $responseData=[];
+        $constraints = new Assert\Collection([
+            'ticketId' => [new Assert\NotBlank(['message' => 'TicketId is required.']), new Assert\Type(type: "integer"),new Assert\GreaterThan(0)],
+            'userId' => [new Assert\NotBlank(['message' => 'userId is required.']), new Assert\Type(type: "integer"),new Assert\GreaterThan(0)]
+        ]);
+    
+        $errors = $this->validator->validate($data, $constraints);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+            $responseData=[
+                'data'=>[],
+                'status'=>Response::HTTP_BAD_REQUEST,
+                'message'=>'',
+                'error'=>$errorMessages
+            ];
+        } else {
+            $now = new DateTimeImmutable();
+            $ticket = $this->ticketRepository->findTicketById($data['ticketId']);
+            $assignedTo = $this->userRepository->find($data['userId']);
+            if(empty($ticket) || empty($assignedTo)){
+                $responseData=[
+                    'data'=>[],
+                    'status'=>Response::HTTP_NOT_FOUND,
+                    'message'=>'',
+                    'error'=>'Invalid ticketId or userId'
+                ];
+            } else {
+                $ticket->setUpdatedAt($now);
+                $ticket->setUpdatedBy($user);
+                $ticket->setAssignedTo($assignedTo);
+                $this->entityManager->flush();
+                $responseData=[
+                    'data'=>['id' => $ticket->getId(),'updatedBy'=>$user->getId(),'assignedTo'=>$assignedTo->getId()],
+                    'status'=>Response::HTTP_OK,
+                    'message'=>'ticket assigned successfully',
+                    'error'=>''
+                ];
+            }
+        }
+        return $responseData;
+    }
+
+    /** function to close the ticket */
+    public function closeTicket($data,$user): array
+    {
+        $responseData=[];
+        $constraints = new Assert\Collection([
+            'ticketId' => [new Assert\NotBlank(['message' => 'TicketId is required.']), new Assert\Type(type: "integer"),new Assert\GreaterThan(0)]
+        ]);
+    
+        $errors = $this->validator->validate($data, $constraints);
+
+        if (count($errors) > 0) {
+            $errorMessages = [];
+            foreach ($errors as $error) {
+                $errorMessages[$error->getPropertyPath()] = $error->getMessage();
+            }
+            $responseData=[
+                'data'=>[],
+                'status'=>Response::HTTP_BAD_REQUEST,
+                'message'=>'',
+                'error'=>$errorMessages
+            ];
+        } else {
+            $now = new DateTimeImmutable();
+            $ticket = $this->ticketRepository->findTicketById($data['ticketId']);
+            if(empty($ticket)){
+                $responseData=[
+                    'data'=>[],
+                    'status'=>Response::HTTP_NOT_FOUND,
+                    'message'=>'',
+                    'error'=>'Invalid ticketId'
+                ];
+            }
+            else {
+                $createdBy = $ticket->getCreatedBy();
+                if($createdBy->getId() == $user->getId()){
+                    $ticket->setUpdatedAt($now);
+                    $ticket->setUpdatedBy($user);
+                    $ticket->setStatus(TicketStatus::from('closed'));
+                    $this->entityManager->flush();
+                    $responseData=[
+                        'data'=>['id' => $ticket->getId(),'updatedBy'=>$user->getId(),'closed by'=>$user->getId()],
+                        'status'=>Response::HTTP_OK,
+                        'message'=>'ticket closed successfully',
+                        'error'=>''
+                    ];
+                } else {
+                    $responseData=[
+                        'data'=>[],
+                        'status'=>Response::HTTP_NOT_ACCEPTABLE,
+                        'message'=>'',
+                        'error'=>'You are not authorised to close this ticket, make sure you are closing ticket created by you!'
+                    ];
+                }
+            }
         }
         return $responseData;
     }
